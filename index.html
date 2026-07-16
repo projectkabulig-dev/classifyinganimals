@@ -560,14 +560,15 @@ function playWrongSound(){
   });
 }
 
-const PRAISE_WORDS = ["Very Good!", "Excellent!", "Great Job!", "Magaling!", "Ang galing!", "Perfect!"];
-const ENCOURAGE_WORDS = ["Better luck next time!", "Try again!", "Halos na!", "Subukan ulit!"];
+const PRAISE_WORDS = ["Very Good!", "Excellent!", "Great Job!", "Awesome!", "Fantastic!", "Perfect!"];
+const ENCOURAGE_WORDS = ["Better luck next time!", "Try again!", "Almost there!", "Keep trying!"];
 
 function speak(text){
   if(!soundOn) return;
   if(!("speechSynthesis" in window)) return;
   window.speechSynthesis.cancel(); // itigil ang naunang sinasabi para hindi mag-overlap
   const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = "en-US";
   utter.rate = 1.0;
   utter.pitch = 1.1;
   window.speechSynthesis.speak(utter);
