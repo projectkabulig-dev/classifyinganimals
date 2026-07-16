@@ -85,6 +85,47 @@
   .scoreboard span{color: var(--herb);}
   .scoreboard .miss{color: var(--carn);}
 
+  .sound-toggle{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: none;
+    background: var(--paper);
+    box-shadow: 0 4px 0 var(--shadow);
+    font-size: 1.2rem;
+    cursor:pointer;
+    vertical-align: middle;
+    margin-left: 8px;
+    transition: transform 0.1s ease;
+  }
+  .sound-toggle:active{ transform: translateY(2px); }
+
+  .confetti-piece{
+    position: fixed;
+    width: 9px;
+    height: 14px;
+    top: 0;
+    left: 0;
+    border-radius: 2px;
+    pointer-events: none;
+    z-index: 500;
+    animation: confetti-fall linear forwards;
+  }
+
+  @keyframes confetti-fall{
+    0%{
+      transform: translate(0, 0) rotate(0deg);
+      opacity: 1;
+    }
+    100%{
+      transform: translate(var(--dx), 260px) rotate(var(--rot));
+      opacity: 0;
+    }
+  }
+
   /* ===== WALKING ZONE (SKY) ===== */
   .sky-zone{
     position:relative;
@@ -391,6 +432,7 @@
     <span class="miss">❌ Mali: <span id="scoreWrong">0</span></span>
     <span>🐾 Natitira: <span id="scoreLeft">0</span></span>
   </div>
+  <button class="sound-toggle" id="soundToggle" onclick="toggleSound()" aria-label="I-mute ang tunog">🔊</button>
 </header>
 
 <section class="sky-zone" id="skyZone" aria-label="Mga hayop na naglalakad"></section>
@@ -464,7 +506,115 @@ const skyZone = document.getElementById("skyZone");
 const toast = document.getElementById("toast");
 const winOverlay = document.getElementById("winOverlay");
 
+/* ============================================================
+   SOUND, VOICE PRAISE, AT CONFETTI
+   ============================================================ */
+let soundOn = true;
+let audioCtx = null;
+
+function getAudioCtx(){
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if(!AC) return null;
+  if(!audioCtx){
+    audioCtx = new AC();
+  }
+  if(audioCtx.state === "suspended") audioCtx.resume();
+  return audioCtx;
+}
+
+function playTone(freq, startTime, duration, type, gainPeak){
+  const ctx = getAudioCtx();
+  if(!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type || "sine";
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0, startTime);
+  gain.gain.linearRampToValueAtTime(gainPeak, startTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(startTime);
+  osc.stop(startTime + duration + 0.05);
+}
+
+function playCorrectSound(){
+  if(!soundOn) return;
+  const ctx = getAudioCtx();
+  if(!ctx) return;
+  const now = ctx.currentTime;
+  // masayang ascending chime
+  [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
+    playTone(freq, now + i * 0.09, 0.35, "sine", 0.25);
+  });
+}
+
+function playWrongSound(){
+  if(!soundOn) return;
+  const ctx = getAudioCtx();
+  if(!ctx) return;
+  const now = ctx.currentTime;
+  // "womp womp" — dalawang paikot na pababang tono
+  [330, 220].forEach((freq, i) => {
+    playTone(freq, now + i * 0.28, 0.5, "sawtooth", 0.15);
+  });
+}
+
+const PRAISE_WORDS = ["Very Good!", "Excellent!", "Great Job!", "Magaling!", "Ang galing!", "Perfect!"];
+const ENCOURAGE_WORDS = ["Better luck next time!", "Try again!", "Halos na!", "Subukan ulit!"];
+
+function speak(text){
+  if(!soundOn) return;
+  if(!("speechSynthesis" in window)) return;
+  window.speechSynthesis.cancel(); // itigil ang naunang sinasabi para hindi mag-overlap
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.0;
+  utter.pitch = 1.1;
+  window.speechSynthesis.speak(utter);
+}
+
+function launchConfetti(cage){
+  const rect = cage.getBoundingClientRect();
+  const colors = ["#F94144", "#F9C74F", "#90BE6D", "#577590", "#F3722C", "#43AA8B"];
+  const count = 22;
+
+  for(let i = 0; i < count; i++){
+    const piece = document.createElement("div");
+    piece.className = "confetti-piece";
+    piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+    piece.style.left = (rect.left + rect.width/2 + (Math.random()-0.5) * rect.width * 0.6) + "px";
+    piece.style.top = (rect.top + 10) + "px";
+    const dx = (Math.random() - 0.5) * 160;
+    const rot = (Math.random() - 0.5) * 720;
+    piece.style.setProperty("--dx", dx + "px");
+    piece.style.setProperty("--rot", rot + "deg");
+    piece.style.animationDuration = (1 + Math.random() * 0.6) + "s";
+    document.body.appendChild(piece);
+    setTimeout(() => piece.remove(), 1700);
+  }
+}
+
+function handleWrongPlacement(animalEl){
+  animalEl.classList.add("wrong");
+  setTimeout(() => animalEl && animalEl.classList.remove("wrong"), 400);
+  wrongCount++;
+  const encourage = ENCOURAGE_WORDS[Math.floor(Math.random() * ENCOURAGE_WORDS.length)];
+  showToast(encourage + " 🤔", "incorrect");
+  playWrongSound();
+  speak(encourage);
+  updateScoreboard();
+}
+
+function toggleSound(){
+  soundOn = !soundOn;
+  const btn = document.getElementById("soundToggle");
+  btn.textContent = soundOn ? "🔊" : "🔇";
+  btn.setAttribute("aria-label", soundOn ? "I-mute ang tunog" : "I-on ang tunog");
+  if(!soundOn && "speechSynthesis" in window) window.speechSynthesis.cancel();
+}
+
 function showToast(message, type){
+
   toast.textContent = message;
   toast.className = "toast show " + type;
   clearTimeout(showToast._t);
@@ -643,11 +793,7 @@ function onDragEnd(e){
     wrap.classList.remove("selected");
     placeAnimalInCage(wrap, cageEl);
   } else {
-    wrap.classList.add("wrong");
-    setTimeout(() => wrap.classList.remove("wrong"), 400);
-    wrongCount++;
-    showToast("Mali! Subukan ulit 🤔", "incorrect");
-    updateScoreboard();
+    handleWrongPlacement(wrap);
   }
 }
 
@@ -674,11 +820,7 @@ document.querySelectorAll(".cage").forEach(cage => {
     if(animalCategory === cageType){
       placeAnimalInCage(selectedAnimalEl, cage);
     } else {
-      selectedAnimalEl.classList.add("wrong");
-      setTimeout(() => selectedAnimalEl && selectedAnimalEl.classList.remove("wrong"), 400);
-      wrongCount++;
-      showToast("Mali! Subukan ulit 🤔", "incorrect");
-      updateScoreboard();
+      handleWrongPlacement(selectedAnimalEl);
     }
   });
 });
@@ -723,7 +865,11 @@ function placeAnimalInCage(animalEl, cage){
   selectedAnimalEl = null;
   correctCount++;
   remaining--;
-  showToast("Tama! Magaling! 🎉", "correct");
+  const praise = PRAISE_WORDS[Math.floor(Math.random() * PRAISE_WORDS.length)];
+  showToast(praise + " 🎉", "correct");
+  playCorrectSound();
+  speak(praise);
+  launchConfetti(cage);
   updateScoreboard();
 
   if(remaining === 0){
