@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="tl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Classifying Animals — Project KABULIG</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --sky-top: #BFEAF5;
+    --sky-bottom: #EAF9FF;
+    --grass-dark: #4F9A52;
+    --grass-light: #6BBE6F;
+    --wood: #8B5A2B;
+    --wood-dark: #6E4520;
+    --herb: #4F9A52;
+    --herb-light: #DFF3E0;
+    --carn: #D9483C;
+    --carn-light: #FBE1DE;
+    --omni: #E8973A;
+    --omni-light: #FCEBD6;
+    --ink: #2E2A26;
+    --paper: #FFFDF8;
+    --shadow: rgba(46,42,38,0.25);
+  }
+
+  *{box-sizing:border-box;}
+
+  body{
+    margin:0;
+    font-family:'Nunito', sans-serif;
+    background: linear-gradient(to bottom, var(--sky-top) 0%, var(--sky-bottom) 55%, var(--grass-light) 56%, var(--grass-dark) 100%);
+    min-height:100vh;
+    overflow-x:hidden;
+    color: var(--ink);
+  }
+
+  header{
+    text-align:center;
+    padding: 18px 16px 6px;
+    position:relative;
+    z-index:5;
+  }
+
+  .kabulig-badge{
+    display:inline-block;
+    font-family:'Baloo 2', sans-serif;
+    font-weight:700;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    color: #D4A017;
+    background: #0B1F4B;
+    padding: 4px 14px;
+    border-radius: 999px;
+    margin-bottom: 8px;
+  }
+
+  h1{
+    font-family:'Baloo 2', sans-serif;
+    font-weight:800;
+    font-size: clamp(1.6rem, 4vw, 2.6rem);
+    margin: 0 0 4px;
+    color: var(--wood-dark);
+    text-shadow: 2px 2px 0 rgba(255,255,255,0.6);
+  }
+
+  .subtitle{
+    font-weight:600;
+    color:#3d5a3f;
+    margin:0 0 10px;
+  }
+
+  .scoreboard{
+    display:inline-flex;
+    gap:18px;
+    background: var(--paper);
+    border-radius: 999px;
+    padding: 8px 22px;
+    box-shadow: 0 4px 0 var(--shadow);
+    font-family:'Baloo 2', sans-serif;
+    font-weight:700;
+    font-size: 1.05rem;
+  }
+  .scoreboard span{color: var(--herb);}
+  .scoreboard .miss{color: var(--carn);}
+
+  /* ===== WALKING ZONE (SKY) ===== */
+  .sky-zone{
+    position:relative;
+    height: 34vh;
+    min-height: 220px;
+    max-height: 320px;
+    overflow:hidden;
+  }
+
+  .cloud{
+    position:absolute;
+    background: white;
+    opacity:0.85;
+    border-radius: 50px;
+    filter: blur(0.5px);
+  }
+  .cloud::before, .cloud::after{
+    content:"";
+    position:absolute;
+    background:white;
+    border-radius:50%;
+  }
+
+  .animal{
+    position:absolute;
+    bottom: 10px;
+    width: 88px;
+    height: 88px;
+    cursor:pointer;
+    transition: transform 0.15s ease, filter 0.15s ease;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    z-index:3;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .animal img{
+    width:100%;
+    height:100%;
+    object-fit: contain;
+    display:block;
+    filter: drop-shadow(0 6px 4px rgba(0,0,0,0.25));
+  }
+
+  .animal .bob{
+    animation: bob 0.6s ease-in-out infinite;
+  }
+
+  @keyframes bob{
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+
+  .animal:hover{
+    transform: scale(1.12);
+  }
+
+  .animal.selected{
+    filter: drop-shadow(0 0 0 4px gold);
+    transform: scale(1.15);
+    animation-play-state: paused;
+  }
+  .animal.selected .bob{
+    animation-play-state: paused;
+  }
+  .animal.selected img{
+    filter: drop-shadow(0 0 10px gold) drop-shadow(0 6px 4px rgba(0,0,0,0.25));
+  }
+
+  .animal.wrong{
+    animation: shake 0.4s;
+  }
+  @keyframes shake{
+    0%,100%{transform: translateX(0);}
+    20%{transform: translateX(-10px) rotate(-6deg);}
+    40%{transform: translateX(10px) rotate(6deg);}
+    60%{transform: translateX(-8px) rotate(-4deg);}
+    80%{transform: translateX(8px) rotate(4deg);}
+  }
+
+  .animal.placed{
+    animation: none !important;
+  }
+
+  /* walking left-to-right and back, staggered by nth-child in JS via inline style */
+  @keyframes walk-right{
+    from{ left: -100px; }
+    to{ left: 100%; }
+  }
+
+  /* ===== CAGES (GROUND) ===== */
+  .ground-zone{
+    position:relative;
+    padding: 18px 4vw 34px;
+    display:flex;
+    gap: 3vw;
+    justify-content:center;
+    flex-wrap: wrap;
+    z-index:4;
+  }
+
+  .cage{
+    flex: 1 1 260px;
+    max-width: 340px;
+    min-height: 190px;
+    background: rgba(255,253,248,0.15);
+    border: 6px solid var(--wood);
+    border-radius: 18px;
+    position:relative;
+    padding: 34px 10px 10px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: inset 0 0 0 3px rgba(255,255,255,0.15), 0 6px 0 var(--wood-dark);
+  }
+
+  .cage.hover-ok{
+    transform: translateY(-4px) scale(1.03);
+    box-shadow: inset 0 0 0 3px rgba(255,255,255,0.25), 0 10px 0 var(--wood-dark), 0 0 0 5px gold;
+  }
+
+  .cage-sign{
+    position:absolute;
+    top: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family:'Baloo 2', sans-serif;
+    font-weight:800;
+    font-size: 1.15rem;
+    color: white;
+    padding: 6px 22px;
+    border-radius: 10px;
+    box-shadow: 0 3px 0 rgba(0,0,0,0.2);
+    white-space:nowrap;
+  }
+
+  .cage[data-type="herbivore"] .cage-sign{ background: var(--herb); }
+  .cage[data-type="carnivore"] .cage-sign{ background: var(--carn); }
+  .cage[data-type="omnivore"] .cage-sign{ background: var(--omni); }
+
+  .cage[data-type="herbivore"]{ background: linear-gradient(var(--herb-light), transparent 70%); }
+  .cage[data-type="carnivore"]{ background: linear-gradient(var(--carn-light), transparent 70%); }
+  .cage[data-type="omnivore"]{ background: linear-gradient(var(--omni-light), transparent 70%); }
+
+  .cage-hint{
+    text-align:center;
+    font-size: 0.85rem;
+    font-weight:700;
+    opacity: 0.65;
+    margin-bottom: 8px;
+  }
+
+  .cage-contents{
+    display:flex;
+    flex-wrap:wrap;
+    gap: 6px;
+    justify-content:center;
+    align-items:flex-end;
+    min-height: 60px;
+  }
+
+  .cage-contents img{
+    width: 52px;
+    height: 52px;
+    object-fit: contain;
+    filter: drop-shadow(0 3px 2px rgba(0,0,0,0.25));
+    animation: pop-in 0.35s ease;
+  }
+
+  @keyframes pop-in{
+    from{ transform: scale(0); opacity:0; }
+    to{ transform: scale(1); opacity:1; }
+  }
+
+  /* ===== FEEDBACK TOAST ===== */
+  .toast{
+    position: fixed;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-60px);
+    background: var(--paper);
+    padding: 10px 24px;
+    border-radius: 999px;
+    font-family:'Baloo 2', sans-serif;
+    font-weight:700;
+    box-shadow: 0 4px 0 var(--shadow);
+    transition: transform 0.25s ease;
+    z-index: 50;
+    pointer-events:none;
+  }
+  .toast.show{ transform: translateX(-50%) translateY(0); }
+  .toast.correct{ color: var(--herb); }
+  .toast.incorrect{ color: var(--carn); }
+
+  /* ===== WIN SCREEN ===== */
+  .win-overlay{
+    position: fixed;
+    inset: 0;
+    background: rgba(46,42,38,0.55);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index: 100;
+  }
+  .win-overlay.show{ display:flex; }
+
+  .win-card{
+    background: var(--paper);
+    border-radius: 22px;
+    padding: 34px 40px;
+    text-align:center;
+    max-width: 90vw;
+    box-shadow: 0 10px 0 var(--shadow);
+  }
+
+  .win-card h2{
+    font-family:'Baloo 2', sans-serif;
+    font-size: 1.8rem;
+    margin: 0 0 8px;
+    color: var(--wood-dark);
+  }
+
+  .win-card p{ margin: 0 0 18px; font-weight:600; }
+
+  .btn{
+    font-family:'Baloo 2', sans-serif;
+    font-weight:700;
+    font-size: 1rem;
+    background: var(--herb);
+    color: white;
+    border: none;
+    padding: 12px 28px;
+    border-radius: 999px;
+    cursor:pointer;
+    box-shadow: 0 4px 0 #366b38;
+    transition: transform 0.1s ease;
+  }
+  .btn:active{ transform: translateY(3px); box-shadow: 0 1px 0 #366b38; }
+
+  footer{
+    text-align:center;
+    padding: 6px 10px 16px;
+    font-size: 0.8rem;
+    color: rgba(46,42,38,0.6);
+    position:relative;
+    z-index:4;
+  }
+
+  @media (max-width: 640px){
+    .animal{ width: 64px; height: 64px; }
+    .cage-contents img{ width: 40px; height:40px; }
+    .cage{ padding-top: 30px; min-height: 150px;}
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .animal, .bob{ animation: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="kabulig-badge">PROJECT KABULIG</div>
+  <h1>🐾 Classifying Animals</h1>
+  <p class="subtitle">I-click ang hayop, tapos ilagay sa tamang kulungan!</p>
+  <div class="scoreboard">
+    <span>✅ Tama: <span id="scoreCorrect">0</span></span>
+    <span class="miss">❌ Mali: <span id="scoreWrong">0</span></span>
+    <span>🐾 Natitira: <span id="scoreLeft">0</span></span>
+  </div>
+</header>
+
+<section class="sky-zone" id="skyZone" aria-label="Mga hayop na naglalakad"></section>
+
+<section class="ground-zone" id="groundZone">
+  <div class="cage" data-type="herbivore">
+    <div class="cage-sign">🌿 HERBIVORE</div>
+    <div class="cage-hint">Kumakain ng halaman</div>
+    <div class="cage-contents" id="cage-herbivore"></div>
+  </div>
+  <div class="cage" data-type="carnivore">
+    <div class="cage-sign">🍖 CARNIVORE</div>
+    <div class="cage-hint">Kumakain ng karne</div>
+    <div class="cage-contents" id="cage-carnivore"></div>
+  </div>
+  <div class="cage" data-type="omnivore">
+    <div class="cage-sign">🍽️ OMNIVORE</div>
+    <div class="cage-hint">Kumakain ng pareho</div>
+    <div class="cage-contents" id="cage-omnivore"></div>
+  </div>
+</section>
+
+<footer>Project KABULIG &middot; SDO Romblon &middot; Developed by Sir Dyon</footer>
+
+<div class="toast" id="toast"></div>
+
+<div class="win-overlay" id="winOverlay">
+  <div class="win-card">
+    <h2>🎉 Tapos na!</h2>
+    <p id="winMessage">Nailagay mo lahat ng hayop sa tamang kulungan!</p>
+    <button class="btn" id="playAgainBtn">Maglaro Ulit</button>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   ANIMAL DATA — palitan ang "img" path kapag na-upload na
+   ang mga AI-generated images sa GitHub repo mo.
+   Folder structure na inaasahan:
+     images/herbivore/<name>.png
+     images/carnivore/<name>.png
+     images/omnivore/<name>.png
+   ============================================================ */
+const ANIMALS = [
+  { id: "kalabaw",  name: "Kalabaw",  category: "herbivore", img: "images/herbivore/kalabaw.png",  emoji: "🐃" },
+  { id: "cow",      name: "Baka",     category: "herbivore", img: "images/herbivore/cow.png",      emoji: "🐄" },
+  { id: "goat",     name: "Kambing",  category: "herbivore", img: "images/herbivore/goat.png",     emoji: "🐐" },
+  { id: "rabbit",   name: "Kuneho",   category: "herbivore", img: "images/herbivore/rabbit.png",   emoji: "🐰" },
+  { id: "deer",     name: "Usa",      category: "herbivore", img: "images/herbivore/deer.png",     emoji: "🦌" },
+  { id: "elephant", name: "Elepante", category: "herbivore", img: "images/herbivore/elephant.png", emoji: "🐘" },
+  { id: "horse",    name: "Kabayo",   category: "herbivore", img: "images/herbivore/horse.png",    emoji: "🐴" },
+
+  { id: "lion",     name: "Leon",     category: "carnivore", img: "images/carnivore/lion.png",     emoji: "🦁" },
+  { id: "tiger",    name: "Tigre",    category: "carnivore", img: "images/carnivore/tiger.png",    emoji: "🐯" },
+  { id: "eagle",    name: "Agila",    category: "carnivore", img: "images/carnivore/eagle.png",    emoji: "🦅" },
+  { id: "wolf",     name: "Lobo",     category: "carnivore", img: "images/carnivore/wolf.png",     emoji: "🐺" },
+  { id: "shark",    name: "Pating",   category: "carnivore", img: "images/carnivore/shark.png",    emoji: "🦈" },
+
+  { id: "bear",     name: "Oso",      category: "omnivore",  img: "images/omnivore/bear.png",      emoji: "🐻" },
+  { id: "pig",      name: "Baboy",    category: "omnivore",  img: "images/omnivore/pig.png",       emoji: "🐷" },
+  { id: "chicken",  name: "Manok",    category: "omnivore",  img: "images/omnivore/chicken.png",   emoji: "🐔" },
+  { id: "monkey",   name: "Unggoy",   category: "omnivore",  img: "images/omnivore/monkey.png",    emoji: "🐵" },
+];
+
+let selectedAnimalEl = null;
+let correctCount = 0;
+let wrongCount = 0;
+let remaining = ANIMALS.length;
+
+const skyZone = document.getElementById("skyZone");
+const toast = document.getElementById("toast");
+const winOverlay = document.getElementById("winOverlay");
+
+function showToast(message, type){
+  toast.textContent = message;
+  toast.className = "toast show " + type;
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => { toast.className = "toast " + type; }, 1100);
+}
+
+function shuffle(arr){
+  const a = [...arr];
+  for(let i = a.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function spawnAnimals(){
+  skyZone.innerHTML = "";
+  const order = shuffle(ANIMALS);
+  const laneCount = order.length;
+
+  order.forEach((animal, i) => {
+    const wrap = document.createElement("div");
+    wrap.className = "animal";
+    wrap.dataset.id = animal.id;
+    wrap.dataset.category = animal.category;
+    wrap.setAttribute("role", "button");
+    wrap.setAttribute("tabindex", "0");
+    wrap.setAttribute("aria-label", animal.name);
+
+    // vertical lane spacing
+    const topPct = 8 + (i % 4) * 20;
+    wrap.style.top = topPct + "%";
+
+    // stagger + vary the walking animation per animal — mabagal na lakad para madaling i-tap
+    const duration = 20 + Math.random() * 12;
+    const delay = -Math.random() * duration;
+    wrap.style.animation = `walk-right ${duration}s linear infinite`;
+    wrap.style.animationDelay = delay + "s";
+
+    const inner = document.createElement("div");
+    inner.className = "bob";
+
+    const img = document.createElement("img");
+    img.src = animal.img;
+    img.alt = animal.name;
+    img.onerror = function(){
+      // Fallback kung wala pang na-upload na larawan
+      this.onerror = null;
+      const span = document.createElement("div");
+      span.textContent = animal.emoji;
+      span.style.fontSize = "56px";
+      span.style.textAlign = "center";
+      span.style.lineHeight = "88px";
+      wrap.querySelector(".bob").replaceWith(span);
+    };
+
+    inner.appendChild(img);
+    wrap.appendChild(inner);
+
+    wrap.addEventListener("click", () => selectAnimal(wrap));
+    wrap.addEventListener("keypress", (e) => {
+      if(e.key === "Enter" || e.key === " ") selectAnimal(wrap);
+    });
+
+    skyZone.appendChild(wrap);
+  });
+
+  updateScoreboard();
+}
+
+function selectAnimal(el){
+  if(selectedAnimalEl) selectedAnimalEl.classList.remove("selected");
+  if(selectedAnimalEl === el){
+    selectedAnimalEl = null;
+    return;
+  }
+  selectedAnimalEl = el;
+  el.classList.add("selected");
+}
+
+document.querySelectorAll(".cage").forEach(cage => {
+  cage.addEventListener("click", () => {
+    if(!selectedAnimalEl) {
+      showToast("Pumili muna ng hayop! 👆", "incorrect");
+      return;
+    }
+    const animalCategory = selectedAnimalEl.dataset.category;
+    const cageType = cage.dataset.type;
+
+    if(animalCategory === cageType){
+      placeAnimalInCage(selectedAnimalEl, cage);
+    } else {
+      selectedAnimalEl.classList.add("wrong");
+      setTimeout(() => selectedAnimalEl && selectedAnimalEl.classList.remove("wrong"), 400);
+      wrongCount++;
+      showToast("Mali! Subukan ulit 🤔", "incorrect");
+      updateScoreboard();
+    }
+  });
+});
+
+function placeAnimalInCage(animalEl, cage){
+  const id = animalEl.dataset.id;
+  const animal = ANIMALS.find(a => a.id === id);
+  const container = document.getElementById("cage-" + cage.dataset.type);
+
+  const imgClone = document.createElement("img");
+  imgClone.src = animal.img;
+  imgClone.alt = animal.name;
+  imgClone.onerror = function(){
+    this.onerror = null;
+    const span = document.createElement("div");
+    span.textContent = animal.emoji;
+    span.style.fontSize = "36px";
+    imgClone.replaceWith(span);
+  };
+  container.appendChild(imgClone);
+
+  cage.classList.add("hover-ok");
+  setTimeout(() => cage.classList.remove("hover-ok"), 300);
+
+  animalEl.remove();
+  selectedAnimalEl = null;
+  correctCount++;
+  remaining--;
+  showToast("Tama! Magaling! 🎉", "correct");
+  updateScoreboard();
+
+  if(remaining === 0){
+    setTimeout(showWin, 500);
+  }
+}
+
+function updateScoreboard(){
+  document.getElementById("scoreCorrect").textContent = correctCount;
+  document.getElementById("scoreWrong").textContent = wrongCount;
+  document.getElementById("scoreLeft").textContent = remaining;
+}
+
+function showWin(){
+  document.getElementById("winMessage").textContent =
+    `Nailagay mo lahat ng ${ANIMALS.length} hayop! Tama: ${correctCount}, Mali: ${wrongCount}.`;
+  winOverlay.classList.add("show");
+}
+
+document.getElementById("playAgainBtn").addEventListener("click", () => {
+  winOverlay.classList.remove("show");
+  correctCount = 0;
+  wrongCount = 0;
+  remaining = ANIMALS.length;
+  document.querySelectorAll(".cage-contents").forEach(c => c.innerHTML = "");
+  spawnAnimals();
+});
+
+spawnAnimals();
+</script>
+
+</body>
+</html>
