@@ -118,7 +118,7 @@
     animation-timing-function: linear;
     animation-iteration-count: infinite;
     z-index:3;
-    touch-action: manipulation;
+    touch-action: none;
     -webkit-tap-highlight-color: transparent;
   }
 
@@ -128,6 +128,22 @@
     object-fit: contain;
     display:block;
     filter: drop-shadow(0 6px 4px rgba(0,0,0,0.25));
+    -webkit-user-drag: none;
+    user-select: none;
+    pointer-events: none;
+  }
+
+  .animal.dragging{
+    z-index: 999;
+    filter: drop-shadow(0 12px 10px rgba(0,0,0,0.35));
+    transform: scale(1.18) rotate(-3deg);
+    cursor: grabbing;
+    touch-action: none;
+  }
+
+  .cage.drag-over{
+    transform: translateY(-6px) scale(1.05);
+    box-shadow: inset 0 0 0 3px rgba(255,255,255,0.3), 0 10px 0 var(--wood-dark), 0 0 0 6px gold;
   }
 
   .animal .bob{
@@ -348,7 +364,7 @@
 <header>
   <div class="kabulig-badge">PROJECT KABULIG</div>
   <h1>🐾 Classifying Animals</h1>
-  <p class="subtitle">I-click ang hayop, tapos ilagay sa tamang kulungan!</p>
+  <p class="subtitle">I-drag o i-click ang hayop, tapos ilagay sa tamang kulungan!</p>
   <div class="scoreboard">
     <span>✅ Tama: <span id="scoreCorrect">0</span></span>
     <span class="miss">❌ Mali: <span id="scoreWrong">0</span></span>
@@ -460,6 +476,7 @@ function spawnAnimals(){
     // vertical lane spacing
     const topPct = 8 + (i % 4) * 20;
     wrap.style.top = topPct + "%";
+    wrap.dataset.laneTop = topPct + "%"; // itago para maibalik pagkatapos i-drag
 
     // stagger + vary the walking animation per animal — mabagal na lakad para madaling i-tap
     const duration = 20 + Math.random() * 12;
@@ -473,6 +490,7 @@ function spawnAnimals(){
     const img = document.createElement("img");
     img.src = animal.img;
     img.alt = animal.name;
+    img.draggable = false;
     img.onerror = function(){
       // Fallback kung wala pang na-upload na larawan
       this.onerror = null;
@@ -487,7 +505,8 @@ function spawnAnimals(){
     inner.appendChild(img);
     wrap.appendChild(inner);
 
-    wrap.addEventListener("click", () => selectAnimal(wrap));
+    // I-click PARA pumili, O i-drag papunta mismo sa cage
+    wrap.addEventListener("pointerdown", (e) => startDrag(e, wrap));
     wrap.addEventListener("keypress", (e) => {
       if(e.key === "Enter" || e.key === " ") selectAnimal(wrap);
     });
@@ -497,6 +516,118 @@ function spawnAnimals(){
 
   updateScoreboard();
 }
+
+/* ============================================================
+   DRAG & DROP (pointer events — gumagana sa mouse, touch, pen)
+   Simpleng tap (walang galaw) = pumili lang ng hayop (click-to-select)
+   May galaw ang daliri/mouse = drag papunta sa cage
+   ============================================================ */
+let dragState = null;
+const DRAG_THRESHOLD = 6; // pixels bago tawaging "drag" imbes na "tap"
+
+function startDrag(e, wrap){
+  if(e.button !== undefined && e.button !== 0) return; // left-click lang sa mouse
+  const rect = wrap.getBoundingClientRect();
+  dragState = {
+    el: wrap,
+    pointerId: e.pointerId,
+    offsetX: e.clientX - rect.left,
+    offsetY: e.clientY - rect.top,
+    startX: e.clientX,
+    startY: e.clientY,
+    width: rect.width,
+    height: rect.height,
+    moved: false
+  };
+  wrap.addEventListener("pointermove", onDragMove);
+  wrap.addEventListener("pointerup", onDragEnd);
+  wrap.addEventListener("pointercancel", onDragEnd);
+}
+
+function onDragMove(e){
+  if(!dragState || e.pointerId !== dragState.pointerId) return;
+  const dx = e.clientX - dragState.startX;
+  const dy = e.clientY - dragState.startY;
+
+  if(!dragState.moved && Math.hypot(dx, dy) > DRAG_THRESHOLD){
+    dragState.moved = true;
+    dragState.el.setPointerCapture(dragState.pointerId);
+    dragState.el.classList.add("dragging");
+    dragState.el.style.animationPlayState = "paused";
+    dragState.el.style.width = dragState.width + "px";
+    dragState.el.style.height = dragState.height + "px";
+    dragState.el.style.position = "fixed";
+  }
+
+  if(dragState.moved){
+    e.preventDefault();
+    dragState.el.style.left = (e.clientX - dragState.offsetX) + "px";
+    dragState.el.style.top = (e.clientY - dragState.offsetY) + "px";
+
+    const cageEl = getCageAt(e.clientX, e.clientY);
+    document.querySelectorAll(".cage").forEach(c => c.classList.remove("drag-over"));
+    if(cageEl) cageEl.classList.add("drag-over");
+  }
+}
+
+function getCageAt(x, y){
+  const el = document.elementFromPoint(x, y);
+  return el ? el.closest(".cage") : null;
+}
+
+function endDragCleanup(wrap){
+  wrap.removeEventListener("pointermove", onDragMove);
+  wrap.removeEventListener("pointerup", onDragEnd);
+  wrap.removeEventListener("pointercancel", onDragEnd);
+  document.querySelectorAll(".cage").forEach(c => c.classList.remove("drag-over"));
+}
+
+function onDragEnd(e){
+  if(!dragState || e.pointerId !== dragState.pointerId) return;
+  const wrap = dragState.el;
+  const wasMoved = dragState.moved;
+  endDragCleanup(wrap);
+
+  if(!wasMoved){
+    // simpleng tap lang — piliin ang hayop (dating click-to-select)
+    dragState = null;
+    selectAnimal(wrap);
+    return;
+  }
+
+  const cageEl = getCageAt(e.clientX, e.clientY);
+
+  // ibalik sa normal na paglalakad kung hindi napunta sa cage
+  wrap.classList.remove("dragging");
+  wrap.style.position = "";
+  wrap.style.width = "";
+  wrap.style.height = "";
+  wrap.style.left = "";
+  wrap.style.top = wrap.dataset.laneTop;
+  wrap.style.animationPlayState = "";
+
+  dragState = null;
+
+  if(!cageEl){
+    return; // dropped sa walang laman na lugar, babalik lang sa paglalakad
+  }
+
+  const animalCategory = wrap.dataset.category;
+  const cageType = cageEl.dataset.type;
+
+  if(animalCategory === cageType){
+    if(selectedAnimalEl === wrap) selectedAnimalEl = null;
+    wrap.classList.remove("selected");
+    placeAnimalInCage(wrap, cageEl);
+  } else {
+    wrap.classList.add("wrong");
+    setTimeout(() => wrap.classList.remove("wrong"), 400);
+    wrongCount++;
+    showToast("Mali! Subukan ulit 🤔", "incorrect");
+    updateScoreboard();
+  }
+}
+
 
 function selectAnimal(el){
   if(selectedAnimalEl) selectedAnimalEl.classList.remove("selected");
