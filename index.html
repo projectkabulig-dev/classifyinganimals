@@ -261,12 +261,33 @@
     min-height: 60px;
   }
 
-  .cage-contents img{
+  .caged-animal{
     width: 52px;
     height: 52px;
+    cursor: grab;
+    animation: pop-in 0.35s ease;
+    transition: transform 0.15s ease;
+    touch-action: none;
+  }
+
+  .caged-animal:hover{
+    transform: scale(1.12) translateY(-3px);
+  }
+
+  .caged-animal img, .caged-animal div{
+    width: 100%;
+    height: 100%;
     object-fit: contain;
     filter: drop-shadow(0 3px 2px rgba(0,0,0,0.25));
-    animation: pop-in 0.35s ease;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+
+  .caged-animal.dragging-out{
+    cursor: grabbing;
+    filter: drop-shadow(0 10px 8px rgba(0,0,0,0.35));
+    transform: scale(1.2) rotate(3deg);
   }
 
   @keyframes pop-in{
@@ -350,7 +371,7 @@
 
   @media (max-width: 640px){
     .animal{ width: 64px; height: 64px; }
-    .cage-contents img{ width: 40px; height:40px; }
+    .caged-animal{ width: 40px; height:40px; }
     .cage{ padding-top: 30px; min-height: 150px;}
   }
 
@@ -462,9 +483,14 @@ function shuffle(arr){
 function spawnAnimals(){
   skyZone.innerHTML = "";
   const order = shuffle(ANIMALS);
-  const laneCount = order.length;
-
   order.forEach((animal, i) => {
+    const laneIndex = i % 4;
+    skyZone.appendChild(createAnimalElement(animal, laneIndex));
+  });
+  updateScoreboard();
+}
+
+function createAnimalElement(animal, laneIndex){
     const wrap = document.createElement("div");
     wrap.className = "animal";
     wrap.dataset.id = animal.id;
@@ -474,7 +500,7 @@ function spawnAnimals(){
     wrap.setAttribute("aria-label", animal.name);
 
     // vertical lane spacing
-    const topPct = 8 + (i % 4) * 20;
+    const topPct = 8 + (laneIndex % 4) * 20;
     wrap.style.top = topPct + "%";
     wrap.dataset.laneTop = topPct + "%"; // itago para maibalik pagkatapos i-drag
 
@@ -511,10 +537,7 @@ function spawnAnimals(){
       if(e.key === "Enter" || e.key === " ") selectAnimal(wrap);
     });
 
-    skyZone.appendChild(wrap);
-  });
-
-  updateScoreboard();
+    return wrap;
 }
 
 /* ============================================================
@@ -665,9 +688,18 @@ function placeAnimalInCage(animalEl, cage){
   const animal = ANIMALS.find(a => a.id === id);
   const container = document.getElementById("cage-" + cage.dataset.type);
 
+  const item = document.createElement("div");
+  item.className = "caged-animal";
+  item.dataset.id = animal.id;
+  item.setAttribute("role", "button");
+  item.setAttribute("tabindex", "0");
+  item.setAttribute("aria-label", animal.name + " — pindutin para alisin");
+  item.title = "I-click o i-drag palabas para alisin";
+
   const imgClone = document.createElement("img");
   imgClone.src = animal.img;
   imgClone.alt = animal.name;
+  imgClone.draggable = false;
   imgClone.onerror = function(){
     this.onerror = null;
     const span = document.createElement("div");
@@ -675,7 +707,14 @@ function placeAnimalInCage(animalEl, cage){
     span.style.fontSize = "36px";
     imgClone.replaceWith(span);
   };
-  container.appendChild(imgClone);
+  item.appendChild(imgClone);
+
+  item.addEventListener("pointerdown", (e) => startCageDrag(e, item, cage));
+  item.addEventListener("keypress", (e) => {
+    if(e.key === "Enter" || e.key === " ") removeFromCage(item, cage);
+  });
+
+  container.appendChild(item);
 
   cage.classList.add("hover-ok");
   setTimeout(() => cage.classList.remove("hover-ok"), 300);
@@ -689,6 +728,104 @@ function placeAnimalInCage(animalEl, cage){
 
   if(remaining === 0){
     setTimeout(showWin, 500);
+  }
+}
+
+/* ============================================================
+   PAG-ALIS NG HAYOP SA CAGE — click o i-drag palabas
+   ============================================================ */
+function removeFromCage(item, cage){
+  const id = item.dataset.id;
+  const animal = ANIMALS.find(a => a.id === id);
+  item.remove();
+
+  correctCount--;
+  remaining++;
+  updateScoreboard();
+  showToast(animal.name + " ay lumabas ng kulungan", "incorrect");
+
+  // ibalik ang hayop sa paglalakad
+  const laneIndex = Math.floor(Math.random() * 4);
+  skyZone.appendChild(createAnimalElement(animal, laneIndex));
+}
+
+let cageDragState = null;
+const CAGE_DRAG_THRESHOLD = 6;
+
+function startCageDrag(e, item, cage){
+  if(e.button !== undefined && e.button !== 0) return;
+  const rect = item.getBoundingClientRect();
+  cageDragState = {
+    el: item,
+    cage: cage,
+    pointerId: e.pointerId,
+    offsetX: e.clientX - rect.left,
+    offsetY: e.clientY - rect.top,
+    startX: e.clientX,
+    startY: e.clientY,
+    width: rect.width,
+    height: rect.height,
+    moved: false
+  };
+  item.addEventListener("pointermove", onCageDragMove);
+  item.addEventListener("pointerup", onCageDragEnd);
+  item.addEventListener("pointercancel", onCageDragEnd);
+}
+
+function onCageDragMove(e){
+  if(!cageDragState || e.pointerId !== cageDragState.pointerId) return;
+  const dx = e.clientX - cageDragState.startX;
+  const dy = e.clientY - cageDragState.startY;
+
+  if(!cageDragState.moved && Math.hypot(dx, dy) > CAGE_DRAG_THRESHOLD){
+    cageDragState.moved = true;
+    cageDragState.el.setPointerCapture(cageDragState.pointerId);
+    cageDragState.el.classList.add("dragging-out");
+    cageDragState.el.style.width = cageDragState.width + "px";
+    cageDragState.el.style.height = cageDragState.height + "px";
+    cageDragState.el.style.position = "fixed";
+    cageDragState.el.style.zIndex = 999;
+  }
+
+  if(cageDragState.moved){
+    e.preventDefault();
+    cageDragState.el.style.left = (e.clientX - cageDragState.offsetX) + "px";
+    cageDragState.el.style.top = (e.clientY - cageDragState.offsetY) + "px";
+  }
+}
+
+function onCageDragEnd(e){
+  if(!cageDragState || e.pointerId !== cageDragState.pointerId) return;
+  const item = cageDragState.el;
+  const cage = cageDragState.cage;
+  const wasMoved = cageDragState.moved;
+
+  item.removeEventListener("pointermove", onCageDragMove);
+  item.removeEventListener("pointerup", onCageDragEnd);
+  item.removeEventListener("pointercancel", onCageDragEnd);
+
+  if(!wasMoved){
+    // simpleng click/tap — alisin agad
+    cageDragState = null;
+    removeFromCage(item, cage);
+    return;
+  }
+
+  const stillInsideCage = getCageAt(e.clientX, e.clientY) === cage;
+  cageDragState = null;
+
+  if(stillInsideCage){
+    // ibinalik sa loob din ng parehong cage — walang mangyayari
+    item.classList.remove("dragging-out");
+    item.style.position = "";
+    item.style.width = "";
+    item.style.height = "";
+    item.style.left = "";
+    item.style.top = "";
+    item.style.zIndex = "";
+  } else {
+    // na-drag palabas ng cage — alisin at ibalik sa paglalakad
+    removeFromCage(item, cage);
   }
 }
 
